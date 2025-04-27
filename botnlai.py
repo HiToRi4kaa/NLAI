@@ -588,6 +588,41 @@ def handle_edit_playlists_menu(call):
         parse_mode='HTML'
     )
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith('edit_playlist:'))
+def handle_edit_playlist(call):
+    """
+    Обробляє вибір конкретного плейлиста для редагування.
+
+    Зберігає назву плейлиста в user_data і відображає меню редагування.
+
+    Args:
+        call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
+    """
+    chat_id = call.message.chat.id
+    playlist_name = call.data.split(':')[1]
+
+    # Зберігаємо плейлист у user_data
+    if chat_id not in user_data:
+        user_data[chat_id] = {}
+    user_data[chat_id]['editing_playlist'] = playlist_name
+
+    # Видаляємо старе меню
+    bot.delete_message(chat_id, call.message.message_id)
+
+    # Створюємо кнопки
+    markup = telebot.types.InlineKeyboardMarkup()
+    edit_tracks_button = telebot.types.InlineKeyboardButton("🎵 Редагувати треки", callback_data='manage_tracks:0')
+    back_button = telebot.types.InlineKeyboardButton("🔙 Назад", callback_data='edit_playlists:0')
+    markup.row(edit_tracks_button, back_button)
+
+    # Відправляємо повідомлення
+    bot.send_message(
+        chat_id,
+        f"📂 Плейлист: <b>{playlist_name}</b>",
+        reply_markup=markup,
+        parse_mode='HTML'
+    )
+
 @bot.callback_query_handler(func=lambda call: call.data == 'create_playlist')
 def handle_create_playlist(call):
     """
@@ -598,7 +633,7 @@ def handle_create_playlist(call):
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
     """
-    # Видаляємо попереднє повідомлення
+    # Видаляємо старе повідомлення
     bot.delete_message(call.message.chat.id, call.message.message_id)
     bot.answer_callback_query(call.id)
 
