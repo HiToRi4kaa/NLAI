@@ -1,32 +1,59 @@
 import telebot
+import hashlib
 import json
 import logging
 
 # Налаштовуємо логування
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Для кінечної версії бота вимкнемо логування
+# Suppress debug logs from the telebot library
 telebot.logger.setLevel(logging.WARNING)
 
-# Створення об'єкта бота
-bot = telebot.TeleBot('8064955635:AAHX50AjolNSvztMtLQ-qvBzfWdNHo87JOw')
-
-# Глобальні змінні
-user_data = {}
-playlists = []
-PLAYLISTS_FILE = 'playlists.json'
-MUSIC_FILE = 'music.json'
-
-# Функції
-def load_music():
+def calculate_file_hash(file_content):
     """
-    Завантажує дані про музику з файлу.
+    Обчислює SHA-256 хеш для вмісту файлу.
 
-    Якщо файл не знайдено або виникає помилка декодування JSON, повертає порожню структуру.
+    Args:
+        file_content (bytes): Вміст файлу у байтах.
 
     Returns:
-        dict: Дані про музику.
+        str: SHA-256 хеш у вигляді шістнадцяткового рядка.
     """
+    sha256 = hashlib.sha256()
+    sha256.update(file_content)
+    return sha256.hexdigest()
+
+def generate_callback_data(prefix, data):
+    """
+    Генерує хешовану callback_data для уникнення перевищення ліміту довжини.
+
+    Args:
+        prefix (str): Префікс для callback_data.
+        data (str): Дані для хешування.
+
+    Returns:
+        str: Скорочена callback_data.
+    """
+    hashed_data = hashlib.sha256(data.encode()).hexdigest()[:32]
+    return f"{prefix}:{hashed_data}"
+
+# Створення об'єкта бота
+bot = telebot.TeleBot('8064955635:AAHe78CWompJ-CQxoIOUQ_4OryhjeIkd6vw')
+
+# Глобальна змінна для зберігання даних користувачів
+user_data = {}
+
+# Глобальна змінна для зберігання плейлистів
+playlists = []
+
+# Файл для зберігання плейлистів
+PLAYLISTS_FILE = 'playlists.json'
+
+# Файл для зберігання музики
+MUSIC_FILE = 'music.json'
+
+# Завантаження музики з файлу
+def load_music():
     try:
         with open(MUSIC_FILE, 'r', encoding='utf-8') as file:
             return json.load(file)
@@ -37,13 +64,8 @@ def load_music():
         logging.error(f"Помилка декодування JSON: {e}. Створено порожню структуру музики.")
         return {}
 
+# Збереження музики у файл
 def save_music(music_data):
-    """
-    Зберігає дані про музику у файл.
-
-    Args:
-        music_data (dict): Дані про музику для збереження.
-    """
     try:
         with open(MUSIC_FILE, 'w', encoding='utf-8') as file:
             json.dump(music_data, file, ensure_ascii=False, indent=4)
@@ -51,11 +73,13 @@ def save_music(music_data):
     except Exception as e:
         logging.error(f"Помилка при збереженні музики: {e}")
 
+# Глобальна змінна для зберігання музики
+music_data = load_music()
+
+# Функція для завантаження плейлистів з файлу
 def load_playlists():
     """
     Завантажує плейлисти з файлу у глобальну змінну `playlists`.
-
-    Якщо файл не знайдено або виникає помилка декодування JSON, створює порожню структуру.
     """
     global playlists
     try:
@@ -69,11 +93,10 @@ def load_playlists():
         playlists = []
         logging.error(f"Помилка декодування JSON: {e}. Створено порожню структуру плейлистів.")
 
+# Функція для збереження плейлистів у файл
 def save_playlists():
     """
     Зберігає плейлисти у файл.
-
-    Якщо виникає помилка, записує її у лог.
     """
     try:
         with open(PLAYLISTS_FILE, 'w', encoding='utf-8') as file:
@@ -82,6 +105,7 @@ def save_playlists():
     except Exception as e:
         logging.error(f"Помилка при збереженні плейлистів: {e}")
 
+# Функція для отримання плейлистів користувача
 def get_user_playlists(user_id):
     """
     Повертає плейлисти користувача за його ID.
@@ -97,14 +121,8 @@ def get_user_playlists(user_id):
             return user_data.get("playlists", {})
     return {}
 
+# Функція для оновлення плейлистів користувача
 def update_user_playlists(user_id, updated_playlists):
-    """
-    Оновлює плейлисти користувача у глобальній змінній та зберігає їх у файл.
-
-    Args:
-        user_id (int): ID користувача.
-        updated_playlists (dict): Оновлені плейлисти користувача.
-    """
     for user_data in playlists:
         if user_data["user_id"] == user_id:
             user_data["playlists"] = updated_playlists
@@ -114,17 +132,15 @@ def update_user_playlists(user_id, updated_playlists):
     playlists.append({"user_id": user_id, "playlists": updated_playlists})
     save_playlists()
 
-# Завантажуємо дані при запуску
-music_data = load_music()
+# Завантажуємо плейлисти при запуску
 load_playlists()
 
-#Основні команди
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     """
     Обробляє команду /start.
 
-    Відправляє користувачу привітання та головне меню.
+    Вітає користувача та відображає головне меню з кнопками для вибору модулів.
 
     Args:
         message (telebot.types.Message): Повідомлення від користувача.
@@ -132,7 +148,7 @@ def send_welcome(message):
     # Встановлюємо значення у False
     if message.chat.id in user_data:
         user_data[message.chat.id]['adding_music'] = False
-        user_data[message.chat.id]['creating_playlist'] = False
+        user_data[message.chat.id]['creating_playlist'] = False  # Исправлено message.chat_id на message.chat.id
 
     # Створення клавіатури з кнопками
     markup = telebot.types.InlineKeyboardMarkup()
@@ -149,41 +165,12 @@ def send_welcome(message):
         parse_mode='HTML'
     )
 
-@bot.message_handler(commands=['help'])
-def send_help(message):
-    """
-    Відправляє користувачу інформацію про його ID.
-
-    Args:
-        message (telebot.types.Message): Повідомлення від користувача.
-    """
-    bot.send_message(message.chat.id, f"Ваш ID: {message.from_user.id}")  # Відправляємо ID користувача
-
-@bot.message_handler(commands=['info'])
-def send_info(message):
-    """
-    Відправляє користувачу інформацію про автора бота.
-
-    Args:
-        message (telebot.types.Message): Повідомлення від користувача.
-    """
-bot.send_message(
-    message.chat.id,
-    "<b>ℹ️ Інформація про розробника:</b>\n\n"
-    "👨‍🎓 <b>Автор:</b> студент <i>Новокаховський політехнічний фаховий коледжу Національного університету «Одеська політехніка»</i>\n"
-        "📚 <b>Група:</b> 12221\n"
-        "✍️ <b>Ім'я:</b> Миллєр Максим\n\n"
-        "Дякую, що користуєтесь ботом! 😊",
-        parse_mode='HTML'
-    )
-
-# --- Callback Query Handlers for Music ---
 @bot.callback_query_handler(func=lambda call: call.data == 'music')
 def music_menu(call):
     """
-    Відображає меню модуля "Музика".
+    Обробляє вибір модуля "Музика".
 
-    Видаляє попереднє повідомлення та показує кнопки для вибору опцій.
+    Видаляє попереднє повідомлення та відображає меню з опціями для музики, плейлистів та інструментів.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -191,7 +178,7 @@ def music_menu(call):
     # Встановлюємо значення у False
     if call.message.chat.id in user_data:
         user_data[call.message.chat.id]['adding_music'] = False
-        user_data[call.message.chat.id]['creating_playlist'] = False
+        user_data[call.message.chat.id]['creating_playlist'] = False  # Исправлено call.chat_id на call.message.chat.id
 
     # Видаляємо попереднє повідомлення
     bot.delete_message(call.message.chat.id, call.message.message_id)
@@ -222,7 +209,7 @@ def handle_add_music(call):
     """
     Обробляє натискання кнопки "Додати музику".
 
-    Відправляє користувачу інструкцію для завантаження музики.
+    Відправляє користувачу повідомлення з проханням надіслати аудіофайл.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -247,7 +234,8 @@ def save_music_file(message):
     """
     Обробляє отримання аудіофайлу від користувача.
 
-    Зберігає файл у бібліотеці користувача або повідомляє про дублювання.
+    Зберігає назву файлу як ключ, а словник з ID Telegram та ID користувача як значення у JSON файл.
+    Якщо файл з такою назвою вже існує для цього користувача, відправляє повідомлення про це.
 
     Args:
         message (telebot.types.Message): Повідомлення з аудіофайлом.
@@ -281,9 +269,9 @@ def save_music_file(message):
 @bot.callback_query_handler(func=lambda call: call.data == 'music_option')
 def handle_music_option(call):
     """
-    Відображає список доступної музики для прослуховування.
+    Обробляє вибір опції "Прослухати музику".
 
-    Видаляє попереднє меню та показує кнопки для навігації між треками.
+    Видаляє попереднє меню "music" і відображає список доступної музики для вибору та прослуховування.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -320,9 +308,7 @@ def handle_music_option(call):
 @bot.callback_query_handler(func=lambda call: call.data in ['prev_track', 'next_track'])
 def handle_track_navigation(call):
     """
-    Обробляє навігацію між треками.
-
-    Показує попередній або наступний трек у списку.
+    Обробляє навігацію між треками ("Попередня" та "Наступна").
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -355,28 +341,27 @@ def handle_track_navigation(call):
     bot.edit_message_media(
         chat_id=chat_id,
         message_id=call.message.message_id,
-        media=telebot.types.InputMediaAudio(media=current_track_id),
+        media=telebot.types.InputMediaAudio(media=current_track_id),  # Убрано caption
         reply_markup=markup
     )
 
-#Плейлисти
 @bot.callback_query_handler(func=lambda call: call.data == 'playlist')
 def handle_playlist_menu(call):
     """
-    Відображає меню модуля "Плейлисти".
+    Обробляє вибір модуля "Плейлисти".
 
-    Показує кнопки для перегляду, створення та редагування плейлистів.
+    Відображає меню з опціями для керування плейлистами.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
     """
     chat_id = call.message.chat.id
 
-    # Ініціалізуємо дані користувача, якщо їх ще немає
+    # Инициализация данных пользователя, если их нет
     if chat_id not in user_data:
         user_data[chat_id] = {}
 
-    # Скидаємо стан створення плейлиста
+    # Сбрасываем стан створення плейлиста
     user_data[chat_id]['creating_playlist'] = False
 
     # Створюємо меню
@@ -403,7 +388,9 @@ def handle_playlist_menu(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('view_playlists'))
 def handle_view_playlists(call):
     """
-    Відображає список плейлистів користувача з пагінацією.
+    Обрабатывает просмотр плейлистов пользователя с пагинацией.
+
+    Отображает список плейлистов, доступных для прослушивания.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -416,27 +403,27 @@ def handle_view_playlists(call):
         bot.send_message(chat_id, "📂 У вас поки немає плейлистів. Додайте їх через меню '➕Додати музику'.")
         return
 
-    # Отримуємо поточну сторінку з callback_data
+    # Получаем текущую страницу из callback_data
     data_parts = call.data.split(':')
     current_page = int(data_parts[1]) if len(data_parts) > 1 else 0
 
-    # Визначаємо кількість плейлистів на сторінці
+    # Определяем количество плейлистов на странице
     playlists_per_page = 5
     playlist_names = list(user_playlists.keys())
     total_pages = (len(playlist_names) + playlists_per_page - 1) // playlists_per_page
 
-    # Отримуємо плейлисти для поточної сторінки
+    # Получаем плейлисты для текущей страницы
     start_index = current_page * playlists_per_page
     end_index = start_index + playlists_per_page
     page_playlists = playlist_names[start_index:end_index]
 
-    # Створюємо кнопки для плейлистів
+    # Создаем кнопки для плейлистов
     markup = telebot.types.InlineKeyboardMarkup()
     for playlist_name in page_playlists:
         playlist_button = telebot.types.InlineKeyboardButton(playlist_name, callback_data=f'play_playlist:{playlist_name}')
         markup.add(playlist_button)
 
-    # Додаємо кнопки пагінації
+    # Добавляем кнопки пагинации
     if current_page > 0 and current_page < total_pages - 1:
         prev_button = telebot.types.InlineKeyboardButton("⬅️ Предыдущая страница", callback_data=f'view_playlists:{current_page - 1}')
         next_button = telebot.types.InlineKeyboardButton("➡️ Следующая страница", callback_data=f'view_playlists:{current_page + 1}')
@@ -448,11 +435,11 @@ def handle_view_playlists(call):
         next_button = telebot.types.InlineKeyboardButton("➡️ Следующая страница", callback_data=f'view_playlists:{current_page + 1}')
         markup.add(next_button)
 
-    # Додаємо кнопку "Назад"
-    back_button = telebot.types.InlineKeyboardButton("🔙 Назад", callback_data='music')
+    # Добавляем кнопку "Назад"
+    back_button = telebot.types.InlineKeyboardButton("🔙 Назад", callback_data='playlist')
     markup.add(back_button)
 
-    # Відправляємо повідомлення з плейлистами
+    # Отправляем сообщение с плейлистами
     bot.answer_callback_query(call.id)
     bot.edit_message_text(
         chat_id=chat_id,
@@ -465,7 +452,9 @@ def handle_view_playlists(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('play_playlist:'))
 def handle_play_playlist(call):
     """
-    Відображає треки з вибраного плейлиста з пагінацією.
+    Обробляє вибір плейлиста для прослуховування.
+
+    Відображає треки з плейлиста з пагінацією.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -515,11 +504,11 @@ def handle_play_playlist(call):
         next_button = telebot.types.InlineKeyboardButton("➡️ Наступна сторінка", callback_data=f'play_playlist:{playlist_name}:{current_page + 1}')
         markup.add(next_button)
 
-    # Додаємо кнопку "Видалити плейлист"
+    # Додаємо кнопку "Назад"
     back_button = telebot.types.InlineKeyboardButton("🔙 Назад", callback_data='view_playlists')
     markup.add(back_button)
 
-    # Відправляємо повідомлення з плейлистом
+    # Відправляємо повідомлення з кнопками
     bot.send_message(
         chat_id,
         f"🎵 Плейлист '{playlist_name}' (Сторінка {current_page + 1} з {total_pages}):",
@@ -529,7 +518,9 @@ def handle_play_playlist(call):
 @bot.callback_query_handler(func=lambda call: call.data == 'edit_playlists' or call.data.startswith('edit_playlists:'))
 def handle_edit_playlists_menu(call):
     """
-    Відображає меню редагування плейлистів з пагінацією.
+    Обробляє вибір модуля "Редагування плейлистів".
+
+    Відображає меню з опціями для редагування плейлистів з пагінацією.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -588,6 +579,88 @@ def handle_edit_playlists_menu(call):
         parse_mode='HTML'
     )
 
+@bot.message_handler(commands=['help'])
+def send_help(message):
+    """
+    Обробляє команду /help.
+
+    Відправляє користувачу повідомлення з інформацією про його ID.
+
+    Args:
+        message (telebot.types.Message): Повідомлення від користувача.
+    """
+    bot.send_message(message.chat.id, f"Ваш ID: {message.from_user.id}")  # Відправляємо ID користувача
+
+@bot.message_handler(commands=['info'])
+def send_info(message):
+    """
+    Обробляє команду /info.
+
+    Відправляє користувачу інформацію про автора бота.
+
+    Args:
+        message (telebot.types.Message): Повідомлення від користувача.
+    """
+    bot.send_message(
+        message.chat.id,
+        "<b>ℹ️ Інформація про розробника:</b>\n\n"
+        "👨‍🎓 <b>Автор:</b> студент <i>Новокаховського фахового коледжу</i>\n"
+        "📚 <b>Група:</b> 12221\n"
+        "✍️ <b>Ім'я:</b> Миллєр Максим\n\n"
+        "Дякую, що користуєтесь ботом! 😊",
+        parse_mode='HTML'
+    )
+
+@bot.callback_query_handler(func=lambda call: call.data == 'create_playlist')
+def handle_create_playlist(call):
+    """
+    Обробляє натискання кнопки "Створити плейлист".
+
+    Відправляє користувачу повідомлення з проханням ввести назву нового плейлиста.
+
+    Args:
+        call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
+    """
+    chat_id = call.message.chat.id
+
+    # Ставимо користувача в режим створення плейлиста
+    user_data[chat_id] = {'creating_playlist': True}
+
+    # Видаляємо попереднє повідомлення
+    bot.delete_message(chat_id, call.message.message_id)
+
+    # Відправляємо інструкцію
+    bot.send_message(chat_id, "📄 Введіть назву нового плейлиста:")
+
+@bot.message_handler(func=lambda message: user_data.get(message.chat.id, {}).get('creating_playlist', False))
+def save_new_playlist(message):
+    """
+    Обробляє введення назви нового плейлиста.
+
+    Зберігає новий плейлист для користувача.
+
+    Args:
+        message (telebot.types.Message): Повідомлення з назвою плейлиста.
+    """
+    chat_id = message.chat.id
+    playlist_name = message.text.strip()
+
+    # Перевіряємо, чи плейлист з такою назвою вже існує
+    user_playlists = get_user_playlists(chat_id)
+    if playlist_name in user_playlists:
+        bot.send_message(chat_id, "❌ Плейлист з такою назвою вже існує. Спробуйте іншу назву.")
+        return
+
+    # Додаємо новий плейлист
+    user_playlists[playlist_name] = []
+    update_user_playlists(chat_id, user_playlists)
+
+    # Виходимо з режиму створення плейлиста
+    user_data[chat_id]['creating_playlist'] = False
+
+    bot.send_message(chat_id, f"✅ Плейлист '{playlist_name}' успішно створено!")
+    handle_playlist_menu(telebot.types.CallbackQuery(id=None, from_user=message.from_user, message=message, data='playlist'))
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('edit_playlist:'))
 def handle_edit_playlist(call):
     """
@@ -623,108 +696,12 @@ def handle_edit_playlist(call):
         parse_mode='HTML'
     )
 
-@bot.callback_query_handler(func=lambda call: call.data == 'create_playlist')
-def handle_create_playlist(call):
-    """
-    Обробляє створення нового плейлиста.
-
-    Запитує у користувача назву нового плейлиста.
-
-    Args:
-        call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
-    """
-    # Видаляємо старе повідомлення
-    bot.delete_message(call.message.chat.id, call.message.message_id)
-    bot.answer_callback_query(call.id)
-
-    # Додаємо кнопку "Назад"
-    markup = telebot.types.InlineKeyboardMarkup()
-    back_button = telebot.types.InlineKeyboardButton("🔙 Назад", callback_data='playlist')
-    markup.add(back_button)
-
-    bot.send_message(
-        call.message.chat.id,
-        "📄 Введіть назву нового плейлиста або натисніть 'Назад', щоб повернутися:",
-        reply_markup=markup
-    )
-
-    # Встановлюємо стан для створення плейлиста
-    user_data[call.message.chat.id] = {'creating_playlist': True}
-
-@bot.message_handler(func=lambda message: user_data.get(message.chat.id, {}).get('creating_playlist', False))
-def save_playlist_name(message):
-    """
-    Зберігає назву нового плейлиста та додає його до списку плейлистів користувача.
-
-    Args:
-        message (telebot.types.Message): Повідомлення від користувача з назвою плейлиста.
-    """
-    chat_id = message.chat.id
-    playlist_name = message.text.strip().lower()
-
-    # Перевіряємо, якщо користувач відправив "назад"
-    if playlist_name == "назад":
-        # Скидаємо стан і повертаємося до меню плейлистів
-        if chat_id in user_data:
-            user_data[chat_id]['creating_playlist'] = False
-        handle_playlist_menu_direct(chat_id)
-        return
-
-    user_playlists = get_user_playlists(chat_id)
-
-    if playlist_name in user_playlists:
-        bot.send_message(chat_id, "❌ Плейлист з такою назвою вже існує. Спробуйте іншу назву.")
-    else:
-        user_playlists[playlist_name] = []
-        update_user_playlists(chat_id, user_playlists)
-        logging.debug(f"Створено новий плейлист: {playlist_name} для чату {chat_id}.")
-        bot.send_message(chat_id, f"✅ Плейлист '{playlist_name}' успішно створено!")
-
-    # Скидаємо стан
-    if chat_id in user_data:
-        user_data[chat_id]['creating_playlist'] = False
-
-    # Повертаємося до меню плейлистів
-    handle_playlist_menu_direct(chat_id)
-
-def handle_playlist_menu_direct(chat_id):
-    """
-    Відображає меню плейлистів без використання CallbackQuery.
-
-    Args:
-        chat_id (int): ID чату.
-    """
-    # Ініціалізуємо дані користувача, якщо їх ще немає
-    if chat_id not in user_data:
-        user_data[chat_id] = {}
-
-    # Скидаємо стан створення плейлиста
-    user_data[chat_id]['creating_playlist'] = False
-
-    # Створюємо меню
-    markup = telebot.types.InlineKeyboardMarkup()
-    view_playlists_button = telebot.types.InlineKeyboardButton("📂Переглянути плейлисти", callback_data='view_playlists')
-    create_playlist_button = telebot.types.InlineKeyboardButton("➕Створити плейлист", callback_data='create_playlist')
-    edit_playlists_button = telebot.types.InlineKeyboardButton("✏️Редагувати плейлисти", callback_data='edit_playlists')
-    back_button = telebot.types.InlineKeyboardButton("🔙 Назад", callback_data='music')
-    markup.row(view_playlists_button, create_playlist_button)
-    markup.row(edit_playlists_button)
-    markup.add(back_button)
-
-    # Відправляємо повідомлення
-    bot.send_message(
-        chat_id,
-        "📄 <b>Меню плейлистів:</b>\n\n"
-        "📂Переглянути плейлисти – перегляд та вибір існуючих плейлистів.\n"
-        "➕Створити плейлист – створення нового плейлиста.",
-        reply_markup=markup,
-        parse_mode='HTML'
-    )
-
 @bot.callback_query_handler(func=lambda call: call.data.startswith('manage_tracks:'))
 def handle_manage_tracks(call):
     """
-    Відображає список треків для редагування у плейлисті з пагінацією.
+    Обробляє редагування треків у плейлисті з пагінацією.
+
+    Відображає список усіх треків з кнопками для додавання або видалення.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -759,19 +736,18 @@ def handle_manage_tracks(call):
     for track_name in page_tracks:
         # Скорочуємо callback_data
         if track_name in playlist_tracks:
-            button = telebot.types.InlineKeyboardButton("❌ " + track_name[:20], callback_data=f'rm:{current_page}:{track_name}')
+            button = telebot.types.InlineKeyboardButton("❌ " + track_name[:20], callback_data=f'rm:{track_name}')
         else:
-            button = telebot.types.InlineKeyboardButton("➕ " + track_name[:20], callback_data=f'add:{current_page}:{track_name}')
+            button = telebot.types.InlineKeyboardButton("➕ " + track_name[:20], callback_data=f'add:{track_name}')
         markup.add(button)
 
     # Додаємо кнопки пагінації
-    pagination_buttons = []
     if current_page > 0:
-        pagination_buttons.append(telebot.types.InlineKeyboardButton("⬅️ Попередня", callback_data=f'manage_tracks:{current_page - 1}'))
+        prev_button = telebot.types.InlineKeyboardButton("⬅️ Попередня", callback_data=f'manage_tracks:{current_page - 1}')
+        markup.add(prev_button)
     if current_page < total_pages - 1:
-        pagination_buttons.append(telebot.types.InlineKeyboardButton("➡️ Наступна", callback_data=f'manage_tracks:{current_page + 1}'))
-    if pagination_buttons:
-        markup.row(*pagination_buttons)
+        next_button = telebot.types.InlineKeyboardButton("➡️ Наступна", callback_data=f'manage_tracks:{current_page + 1}')
+        markup.add(next_button)
 
     # Додаємо кнопку "Назад"
     back_button = telebot.types.InlineKeyboardButton("🔙 Назад", callback_data=f'edit_playlist:{playlist_name}')
@@ -786,7 +762,10 @@ def handle_manage_tracks(call):
 
 def update_manage_tracks_message(call, playlist_name, chat_id):
     """
-    Оновлює повідомлення з кнопками для редагування треків у плейлисті.
+    Оновлює повідомлення з кнопками для редагування треків.
+
+    Якщо трек є у плейлисті, показує кнопку "Видалити".
+    Якщо треку немає у плейлисті, показує кнопку "Додати".
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
@@ -797,33 +776,16 @@ def update_manage_tracks_message(call, playlist_name, chat_id):
     playlist_tracks = user_playlists.get(playlist_name, [])
     user_tracks = [file_name for file_name, entries in music_data.items() if any(entry["user_id"] == chat_id for entry in entries)]
 
-    # Параметри пагінації
-    current_page = int(call.data.split(':')[-1]) if call.data.split(':')[-1].isdigit() else 0
-    tracks_per_page = 5
-    total_pages = (len(user_tracks) + tracks_per_page - 1) // tracks_per_page
-    start_index = current_page * tracks_per_page
-    end_index = start_index + tracks_per_page
-    page_tracks = user_tracks[start_index:end_index]
-
     # Створюємо кнопки для треків
     markup = telebot.types.InlineKeyboardMarkup()
-    for track_name in page_tracks:
+    for track_name in user_tracks:
         if track_name in playlist_tracks:
             # Якщо трек є у плейлисті, показуємо кнопку "Видалити"
-            button = telebot.types.InlineKeyboardButton("❌ Видалити " + track_name[:20], callback_data=f'rm:{current_page}:{track_name}')
+            button = telebot.types.InlineKeyboardButton("❌ Видалити " + track_name[:20], callback_data=f'rm:{track_name}')
         else:
             # Якщо треку немає у плейлисті, показуємо кнопку "Додати"
-            button = telebot.types.InlineKeyboardButton("➕ Додати " + track_name[:20], callback_data=f'add:{current_page}:{track_name}')
+            button = telebot.types.InlineKeyboardButton("➕ Додати " + track_name[:20], callback_data=f'add:{track_name}')
         markup.add(button)
-
-    # Додаємо кнопки пагінації
-    pagination_buttons = []
-    if current_page > 0:
-        pagination_buttons.append(telebot.types.InlineKeyboardButton("⬅️ Попередня", callback_data=f'manage_tracks:{current_page - 1}'))
-    if current_page < total_pages - 1:
-        pagination_buttons.append(telebot.types.InlineKeyboardButton("➡️ Наступна", callback_data=f'manage_tracks:{current_page + 1}'))
-    if pagination_buttons:
-        markup.row(*pagination_buttons)
 
     # Додаємо кнопку "Назад"
     back_button = telebot.types.InlineKeyboardButton("🔙 Назад", callback_data=f'edit_playlist:{playlist_name}')
@@ -833,7 +795,7 @@ def update_manage_tracks_message(call, playlist_name, chat_id):
     bot.edit_message_text(
         chat_id=chat_id,
         message_id=call.message.message_id,
-        text=f"🎵 Треки для редагування у плейлисті '{playlist_name}' (Сторінка {current_page + 1} з {total_pages}):",
+        text=f"🎵 Треки для редагування у плейлисті '{playlist_name}':",
         reply_markup=markup
     )
 
@@ -846,9 +808,7 @@ def handle_add_track_to_playlist(call):
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
     """
     chat_id = call.message.chat.id
-    data_parts = call.data.split(':')
-    current_page = int(data_parts[1])
-    track_name = ':'.join(data_parts[2:])
+    track_name = call.data.split(':')[1]
 
     # Отримуємо назву плейлиста з user_data
     playlist_name = user_data.get(chat_id, {}).get('editing_playlist')
@@ -874,15 +834,13 @@ def handle_add_track_to_playlist(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('rm:'))
 def handle_remove_track(call):
     """
-    Видаляє вибраний трек з плейлиста.
+    Обробляє видалення треку з плейлиста.
 
     Args:
         call (telebot.types.CallbackQuery): Об'єкт з даними про натиснуту кнопку.
     """
     chat_id = call.message.chat.id
-    data_parts = call.data.split(':')
-    current_page = int(data_parts[1])
-    track_name = ':'.join(data_parts[2:])
+    track_name = call.data.split(':')[1]
 
     # Отримуємо назву плейлиста з user_data
     playlist_name = user_data.get(chat_id, {}).get('editing_playlist')
@@ -901,9 +859,6 @@ def handle_remove_track(call):
     else:
         bot.answer_callback_query(call.id, "❌ Трек не знайдено у плейлисті.")
 
-#Кінець
 if __name__ == "__main__":
-    """
-    Запускає бота у режимі опитування.
-    """
+    # Запускаємо бота
     bot.polling()
