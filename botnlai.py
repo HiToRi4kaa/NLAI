@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 telebot.logger.setLevel(logging.WARNING)
 
 # Створення об'єкта бота
-bot = telebot.TeleBot('API_TOKEN')
+bot = telebot.TeleBot('8064955635:AAHDznfYY5TJAb4VLLYbM-f_SHlsGAtoePk')
 
 # Глобальні змінні
 user_data = {}
