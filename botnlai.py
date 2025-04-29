@@ -439,14 +439,14 @@ def handle_view_playlists(call):
 
     # Додаємо кнопки пагінації
     if current_page > 0 and current_page < total_pages - 1:
-        prev_button = telebot.types.InlineKeyboardButton("⬅️ Предыдущая страница", callback_data=f'view_playlists:{current_page - 1}')
-        next_button = telebot.types.InlineKeyboardButton("➡️ Следующая страница", callback_data=f'view_playlists:{current_page + 1}')
+        prev_button = telebot.types.InlineKeyboardButton("⬅️ Попередня сторінка", callback_data=f'view_playlists:{current_page - 1}')
+        next_button = telebot.types.InlineKeyboardButton("➡️ Наступна сторінка", callback_data=f'view_playlists:{current_page + 1}')
         markup.row(prev_button, next_button)
     elif current_page > 0:
-        prev_button = telebot.types.InlineKeyboardButton("⬅️ Предыдущая страница", callback_data=f'view_playlists:{current_page - 1}')
+        prev_button = telebot.types.InlineKeyboardButton("⬅️ Попередня сторінка", callback_data=f'view_playlists:{current_page - 1}')
         markup.add(prev_button)
     elif current_page < total_pages - 1:
-        next_button = telebot.types.InlineKeyboardButton("➡️ Следующая страница", callback_data=f'view_playlists:{current_page + 1}')
+        next_button = telebot.types.InlineKeyboardButton("➡️ Наступна сторінка", callback_data=f'view_playlists:{current_page + 1}')
         markup.add(next_button)
 
     # Додаємо кнопку "Назад"
@@ -458,7 +458,7 @@ def handle_view_playlists(call):
     bot.edit_message_text(
         chat_id=chat_id,
         message_id=call.message.message_id,
-        text=f"🎵 <b>Ваши плейлисты (страница {current_page + 1} из {total_pages}):</b>",
+        text=f"🎵 <b>Ваші плейлисти (страница {current_page + 1} из {total_pages}):</b>",
         reply_markup=markup,
         parse_mode='HTML'
     )
